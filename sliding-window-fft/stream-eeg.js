@@ -4,7 +4,6 @@ var _ = require('lodash')
   , fftjs = require('fft-js')
   , fft = fftjs.fft
   , fftUtil = fftjs.util
-  , Rickshaw = require('rickshaw')
   , h = require('virtual-dom/h')
   , main = require('main-loop')
   , loop = main({ spectrum: [] }, render, require('virtual-dom'))
