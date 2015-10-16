@@ -8,8 +8,10 @@ do an fft on some neurosky data, one raw reading at a time!
 
 then
 
-`browserify stream-eeg.js -o public/bundle.js`
+`npm run build`
 
-finally, serve the public/ directory, e.g. with
+to generate the bundled js. finally, serve the public/ directory with
 
-`ecstatic public/`
+`npm start`
+
+and go to localhost:8000
