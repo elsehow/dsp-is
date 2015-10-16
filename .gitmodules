@@ -1,0 +1,3 @@
+[submodule "diy-gsr"]
+	path = diy-gsr
+	url = https://github.com/Noura/diy-gsr.git
