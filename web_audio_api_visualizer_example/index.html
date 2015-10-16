@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<!-- adapted from url=(0042)http://webaudioapi.com/samples/visualizer/ -->
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+    <link href="app.css" rel="stylesheet" type="text/css">
+
+    <title>Visualizer | Web Audio API</title>
+
+    <script src="jquery.min.js" type="text/javascript"></script>
+    <script src="underscore-min.js" type="text/javascript"></script>
+    <link rel="stylesheet" href="style.css" type="text/css" media="screen">
+    <style type="text/css"></style>
+  </head>
+
+  <body>
+
+    <div id="container">
+
+      <div id="nav">
+        <ul>
+          <li><a href="http://webaudioapi.com/samples">Samples</a>
+          </li>
+        </ul>
+      </div>
+
+      <div id="header">
+        <h1><a href="http://webaudioapi.com/">Web Audio API</a></h1>
+      </div>
+
+      <div id="wrapper">
+        <div id="content">
+
+          <div class="post">
+            <h2>Visualizer</h2>
+            <p></p>
+            <p>Using the AnalyserNode and some Canvas 2D visualizations to show both time- and frequency- domain.</p>
+            <p></p>
+            <p></p>
+            <p>
+              <button id="play" style="display: block">Play/pause</button>
+              <canvas width="640" height="360"></canvas>
+            </p>
+            <p>
+              <button id="test" style="display: block;">Test</button>
+            </p>
+
+            <script src="shared.js"></script>
+            <script src="visualizer-sample.js"></script>
+            <script src="app.js"></script>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
