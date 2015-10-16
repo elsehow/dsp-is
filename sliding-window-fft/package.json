@@ -1,0 +1,37 @@
+{
+  "name": "sliding-window-fft",
+  "version": "1.0.0",
+  "description": "fft data from a neurosky, one raw reading at a time!",
+  "main": "stream-eeg.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "browserify stream-eeg.js -o public/bundle.js",
+    "watch": "watchify stream-eeg.js -o public/bundle.js",
+    "start": "ecstatic public/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elsehow/dsp-is.git"
+  },
+  "keywords": [
+    "neurosky",
+    "eeg"
+  ],
+  "author": "elsehow",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/elsehow/dsp-is/issues"
+  },
+  "homepage": "https://github.com/elsehow/dsp-is#readme",
+  "dependencies": {
+    "fft-js": "0.0.9",
+    "kefir": "^3.1.0",
+    "lodash": "^3.10.1",
+    "main-loop": "^3.2.0",
+    "virtual-dom": "^2.1.1"
+  },
+  "devDependencies": {
+    "browserify": "^11.2.0",
+    "ecstatic": "^1.1.3"
+  }
+}
