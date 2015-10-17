@@ -1,6 +1,6 @@
 # neurosky-browser
 
-see a real-time FFT of your neurosky data..........in the web browser!!
+ideating on the next generation of indra EEG client.
 
 ## installation
 
@@ -15,6 +15,8 @@ and finally, turn on your neurosky device, and
 `npm start`
 
 ## explanation
+
+see a real-time FFT of your neurosky data..........in the web browser!!
 
 lib/mindwave-client.js is reading neurosky data over the serial port using the [mindwave2](http://npmjs.com/package/mindwave2) package on npm. it wites this data to process.stdout
 
