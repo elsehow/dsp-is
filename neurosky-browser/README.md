@@ -1,6 +1,6 @@
 # neurosky-browser
 
-ideating on the next generation of indra EEG client.
+lets bandpass an EEG in the browser
 
 ## installation
 
@@ -18,10 +18,10 @@ and finally, turn on your neurosky device, and
 
 see a real-time FFT of your neurosky data..........in the web browser!!
 
-lib/mindwave-client.js is reading neurosky data over the serial port using the [mindwave2](http://npmjs.com/package/mindwave2) package on npm. it wites this data to process.stdout
+lib/mindwave-client.js is reading neurosky data over the serial port using the [mindwave2](http://npmjs.com/package/mindwave2) package on npm. it produces spectral data at 100Mhz, which it writes to process.stdout
 
-server.js spawns mindwave-client, and pipes that process's stdout to a [shoe](http://npmjs.com/package/shoe) stream.
+server.js pipes mindwave-client.j's process.stdout to a [shoe](http://npmjs.com/package/shoe) stream.
 
-the web client (client.js) takes that stream, turns each buffer into an integer, and uses [kefir](rpominov.github.io/kefir/) to make a sliding window of the last 512 values, FFT them, and render the spectrogram to the DOM.
+the web client (client.js) bandpasses this stream into alpha, beta, gamma, + delta bands
 
-the result? a real-time FFT of your neurosky data at a smooth 512 Hz -- with all-javascript DSP!
+
