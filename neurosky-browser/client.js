@@ -1,5 +1,5 @@
 var shoe = require('shoe')
-  , parser = require('JSONStream').parse('fft')
+  , parser = require('JSONStream').parse('*')
   , es = require('event-stream')
   , h = require('virtual-dom/h')
   , main = require('main-loop')

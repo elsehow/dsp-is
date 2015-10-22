@@ -6,6 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "watch": "watchify client.js -o public/bundle.js",
+    "build": "browserify client.js -o public/bundle.js",
     "start": "node server.js"
   },
   "author": "",
