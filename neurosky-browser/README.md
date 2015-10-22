@@ -14,7 +14,13 @@ and finally, turn on your neurosky device, and
 
 `npm start`
 
-then navigate to http://localhost:8000. give the device a second to pair. check the console for errors - if there's some business about an unexpected comma, restart the server with `npm start` again, and refresh the webpage.
+or, if you don't have a neurosky, run with test data using:
+
+`npm start debug`
+
+then navigate to http://localhost:8000. 
+
+give the device a second to pair. check the console for errors - if there's some business about an unexpected comma, restart the server with `npm start` again, and refresh the webpage.
 
 ## explanation
 
