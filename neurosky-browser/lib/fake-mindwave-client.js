@@ -1,6 +1,6 @@
 var JSONStream = require('JSONStream')
   // debug
-  , raw512 = require('lodash').flatten(require('./raw512.js'))
+  , raw512 = require('lodash').flatten(require('./sampleRawData.js'))
   // EEG processing stuff
   , fftjs = require('fft-js')
   , fft = fftjs.fft
