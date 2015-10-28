@@ -1,87 +1,100 @@
 var shoe = require('shoe')
-  , parser = require('JSONStream').parse('*')
-  , es = require('event-stream')
-  , h = require('virtual-dom/h')
-  , main = require('main-loop')
-  , loop = main({ spectrum: []}, render, require('virtual-dom'))
-  , esmap = function (fn) { return es.mapSync(fn) }
+  , channelName =  '/spectra'
 
-function bands () {
-	  return [
-      {
-    		name: 'delta'
-  		, min: 0
-  		, max: 4
-    	}
-      , {
-    		name: 'theta'
-  		, min: 4
-  		, max: 7
-    	}
-      , {
-    		name: 'alpha'
-   		, min: 8
-   		, max: 15
-    	}
-      , {
-    		name: 'beta'
-   		, min: 16
-   		, max: 31 
-    	}
-      , {
-    		name: '"gamma"'
-   		, min: 32 
-   		, max: 256
-    	}
-    ]
-	}
+// this wraps the main client app (app/index.js)
+// this app has 2 main responsibilities:
+//
+//   * setting up the stream from EEG device
+//   * making a function that lets the app draw on the DOM
+//
+// so, the client app (app/index.js) exposes a function:
+//
+//   module.exports = function (stream, draw) {
+//     // ...
+//   }
+//
+// `stream` is a Kefir stream,
+// `draw` is a function (more on this later)
+//
+// first, `stream`:
+// `stream` is a synchronous, discrete channel of data
+// that comes from our websocket (shoe) stream
+//
+// the shoe stream is a node stream
+// the underlying structure of the stream is a JSON list
+// 
+//   [ {...} ...]
+//
 
-function bandpass (spectrum, band) {
-	return require('lodash').slice(spectrum, band.min, band.max)
-}
+var stream = Kefir.stream(function (emitter) {
 
-function render (state) {
+  var parser  = require('JSONStream').parse('*')
 
-  function drawMagnitude (mag) {
-    return h('div.point', { style: {
-      'height': mag/65+'px' 
-    , 'width': '1px' 
-    , 'float': 'left'
-    , 'padding':'1px' 
-    , 'background-color': '#3ee'
-     }
-   })
+  var mapSync = require('event-stream').mapSync
+  
+  shoe(channelName).pipe(parser).pipe(mapSync(drawSpectrum))
+
+  return
+
+})
+
+
+// (here, for us, "synchronous" means that 
+// the data that comes over `stream` will be well-ordered).
+//
+// so that's `stream.`
+//
+// now, `draw` is a higher-order function that takes 
+//
+//   * a Kefir `stream`,
+//   * `fn`, which takes a list and returns HTML
+//   * `description`, a string that will show up in the UI
+//
+// we can use `draw` to add a view for a stream we're processing
+// and see the data come through in real-time
+//
+// ex. usage in your app:
+//  
+//     draw(alphaBetaRatio, Spectrogram, 'power spectrum')
+//
+
+function draw (stream, fn, description) {
+
+  function renderer (el, fn) {
+    function (list) {
+      el.innerHTML = fn(list)
+    }
   }
 
-	function graph (freqs, bandName) {
-		return h('div.band', { style:
-			{
-				cssFloat:'left'
-			, paddingRight:'5px'
-			}
-		}
-		, [
-			h('h3', bandName)
-		, h('div', freqs.map(drawMagnitude))
-		, h('br')
-		])
-	}
+  function div () {
+    return document.createElement('div')
+  }
 
-	function bandpassGraphs (spectrum) {
-		return h('div.bandpassGraphs', 
-		  bands().map(function (band) {
-		  	var b = bandpass(state.spectrum, band)
-		  	return graph(b, band.name)
-		  })
-    )
-	}
+  // make a div that looks like
+  //
+  //     <div>
+  //       my description
+  //       <div></div>
+  //     </div>
+  //
+  // the nested (empty) div is 
+  // where our graphs will go.
 
-	return bandpassGraphs(state.spectrum)
+  var parent = div()
+  var desc   = document.createTextNode(description)
+  var target = div()
+  parent.appendChild(desc)
+  parent.appendChild(target)
+  document.appendChild(parent)
+  
+  stream.onValue(renderer(target, fn))
+  return
 }
 
-function drawSpectrum (s) {
-  loop.update({spectrum: s})
-}
+// here's where we require the app
+// and launch it
+//
+// TODO docReady(setup)
 
-document.querySelector('#content').appendChild(loop.target)
-var stream = shoe('/raws').pipe(parser).pipe(esmap(drawSpectrum))
+var app = require('./app/index.js')
+app(stream, draw)
