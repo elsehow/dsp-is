@@ -172,6 +172,7 @@ function spectrogram (list) {
 
   var d = h('h1',{ style: {
     'overflow': 'hidden'
+    , 'padding-bottom': '10px'
    }
   }, list[0])
     
@@ -205,11 +206,28 @@ function spectrogram (list) {
       }
      })
     }
+
+  function maxValueAxis (v) {
+    return h('div', { style: {
+      'position':'absolute'
+    , 'bottom': '10px'
+    , 'left': '0'
+    , 'font-size': '8pt'
+    , 'font-style': 'italic'
+    , 'color': '#ccc'
+    }}
+    , v)
+  }
  
-  var d = h('div',{ style: {
-    'overflow': 'hidden'
-   }
-  }, _.map(list, drawMagnitude))
+  var d = h('div', { 
+    style: {
+       'overflow': 'hidden'
+     , 'padding-bottom': '30px'
+     , 'position': 'relative'
+   }}, [
+      _.map(list, drawMagnitude) 
+    , maxValueAxis(maxValue)
+  ])
     
   return d.outerHTML
 
