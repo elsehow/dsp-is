@@ -1,26 +1,14 @@
-
-// big q's:
-//
-//   how to render a spectrogram wherever?
-//   what to wrap this in, and how?
-//   how to describe thse path in data? 
-//
-
-// answers:
-//
-//   higher-order function draw
-//   ???
-//   silly! code *is* data.... 
-//     so, youre asking the same q you (should) always ask!
-//
-
-//patches
+// patches
 var Bandpass = require('./patches/Bandpass.js')
 var Averager = require('./patches/Averager.js')
 
 // combinators
 var Ratio = require('./combinators/Ratio.js')
 var StandardDevThreshold = require('./combinators/StandardDevThreshold.js')
+
+// views
+var Spectrogram = require('./views/Spectrogram.js')
+var NumberView = require('./views/Number.js')
 
 // this function takes a Kefir `stream`
 // and a function `draw`.
@@ -39,24 +27,43 @@ var StandardDevThreshold = require('./combinators/StandardDevThreshold.js')
 //
 module.exports = function (stream, draw) {
 
-  // average alpha power
+  // alpha bandpass
   var alpha = stream
     .map(Bandpass('alpha'))
-    .map(Averager)
+
+  // average alpha power
+  var avgAlpha = alpha.map(Averager)
    
-  // average delta power
+  // beta bandpass
   var beta = stream
     .map(Bandpass('beta'))
-    .map(Averager)
+
+  // average delta power
+  var avgBeta = beta.map(Averager)
   
   // ratio between alpha and delta
-  var alphaBetaRatio = alpha
-    .combine(beta, Ratio) 
+  var alphaBetaRatio = avgAlpha.combine(avgBeta, Ratio) 
   
   // spike detection
   var spikes = alphaBetaRatio
     .combine(
       alphaBetaRatio.slidingWindow(1000).map(require('lodash').flatten)
-    , StandardDevThreshold(-1))
+    , StandardDevThreshold(2))
+
+  // here we draw stuff
+  
+  //draw(stream, Spectrogram, 'full spectrogram')
+  
+  draw(alpha, Spectrogram, 'alpha')
+
+  draw(beta, Spectrogram, 'beta')
+
+  //draw(avgAlpha, Spectrogram, 'average alpha')
+  
+  //draw(avgBeta, Spectrogram, 'average beta')
+  
+  draw(alphaBetaRatio, NumberView,  'ratio of alpha:beta power')
+
+  draw(spikes, NumberView,  'spikes in alpha:beta ratio (+2 stdevs above mean for past 1000 spectra)')
 
 }

@@ -1,4 +1,5 @@
 var shoe = require('shoe')
+  , Kefir = require('kefir')
   , channelName =  '/spectra'
 
 // this wraps the main client app (app/index.js)
@@ -32,18 +33,17 @@ var stream = Kefir.stream(function (emitter) {
 
   var mapSync = require('event-stream').mapSync
   
-  shoe(channelName).pipe(parser).pipe(mapSync(drawSpectrum))
+  shoe(channelName).pipe(parser).pipe(mapSync(emitter.emit))
 
   return
 
 })
 
-
 // (here, for us, "synchronous" means that 
 // the data that comes over `stream` will be well-ordered).
 //
 // so that's `stream.`
-//
+
 // now, `draw` is a higher-order function that takes 
 //
 //   * a Kefir `stream`,
@@ -60,38 +60,45 @@ var stream = Kefir.stream(function (emitter) {
 
 function draw (stream, fn, description) {
 
-  function renderer (el, fn) {
-    function (list) {
-      el.innerHTML = fn(list)
-    }
-  }
-
   function div () {
     return document.createElement('div')
   }
 
-  // make a div that looks like
+  // we make a div that looks like
   //
   //     <div>
   //       my description
   //       <div></div>
   //     </div>
   //
-  // the nested (empty) div is 
-  // where our graphs will go.
+  // the nested (empty) div is where
+  // our graphs will go.
 
   var parent = div()
   var desc   = document.createTextNode(description)
   var target = div()
   parent.appendChild(desc)
   parent.appendChild(target)
-  document.appendChild(parent)
+
+  // we add this div to the dom
+  /
+  document.body.appendChild(parent)
   
-  stream.onValue(renderer(target, fn))
+  // set-up side effect:
+  // a value that comes over Stream
+  // will be passed to `fn`, 
+  // and the html that comes out of `fn` wil
+  // be put in our div
+
+  stream.onValue(function (list) {
+    target.innerHTML = fn(list)
+  })
+   
+
   return
 }
 
-// here's where we require the app
+// we require the app
 // and launch it
 //
 // TODO docReady(setup)

@@ -1,57 +1,4 @@
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
-var shoe = require('shoe')
-  , parser = require('JSONStream').parse('*')
-  , es = require('event-stream')
-  , Kefir = require('kefir')
-
-// make a kefir stream out of whatever comes over /raws
-var stream = Kefir.stream(function (emitter) {
-  shoe('/raws').pipe(parser).pipe(es.mapSync(emitter.emit))
-})
-
-function spectrograph (list) {
-  document.body.innerHTML = JSON.stringify(list)
-}
-
-// big q's:
-//
-//   how to render a spectrogram wherever?
-//   how to describe this path in data?
-//
-
-//patches
-var Bandpass = require('./patches/Bandpass.js')
-var Averager = require('./patches/Averager.js')
-// combinators
-var Ratio = require('./combinators/Ratio.js')
-var StandardDevThreshold = require('./combinators/StandardDevThreshold.js')
-
-// average alpha power
-var alpha = stream
-  .map(Bandpass('alpha'))
-  .map(Averager)
- 
-// average delta power
-var beta = stream
-  .map(Bandpass('beta'))
-  .map(Averager)
-
-// ratio between alpha and delta
-var alphaBetaRatio = alpha
-  .combine(beta, Ratio) 
-
-// spike detection
-var alphaBetaRatioWindow = alphaBetaRatio
-  .slidingWindow(1000)
-  .map(require('lodash').flatten)
-
-var spikes = alphaBetaRatio
-  .combine(
-    alphaBetaRatioWindow
-  , StandardDevThreshold(-1))
-  .onValue(spectrograph)
-
-},{"./combinators/Ratio.js":2,"./combinators/StandardDevThreshold.js":3,"./patches/Averager.js":50,"./patches/Bandpass.js":51,"JSONStream":4,"event-stream":13,"kefir":22,"lodash":23,"shoe":41}],2:[function(require,module,exports){
 // combines two streams
 // finds the ratio between the first element of their values
 //
@@ -68,7 +15,7 @@ function r (l1, l2) {
 
 module.exports = r
 
-},{}],3:[function(require,module,exports){
+},{}],2:[function(require,module,exports){
 var average = require('average')
   , stdev   = require('compute-stdev')
 
@@ -105,7 +52,282 @@ module.exports = function (std) {
   }
 }
 
-},{"average":5,"compute-stdev":10}],4:[function(require,module,exports){
+},{"average":10,"compute-stdev":16}],3:[function(require,module,exports){
+// patches
+var Bandpass = require('./patches/Bandpass.js')
+var Averager = require('./patches/Averager.js')
+
+// combinators
+var Ratio = require('./combinators/Ratio.js')
+var StandardDevThreshold = require('./combinators/StandardDevThreshold.js')
+
+// views
+var Spectrogram = require('./views/Spectrogram.js')
+var NumberView = require('./views/Number.js')
+
+// this function takes a Kefir `stream`
+// and a function `draw`.
+//
+// first, use the stream by `map`ping patches
+//
+//     stream.map(Averager)
+//
+// use combinators to diverge + combine the streams
+//
+//     alphaAverage.combine(betaAverage, Ratio)
+//
+// finally, use `draw` with views to graph the stream
+//    
+//     draw(alphaBetaRatio, Spectrogram, 'alpha/beta ratio')
+//
+module.exports = function (stream, draw) {
+
+  // alpha bandpass
+  var alpha = stream
+    .map(Bandpass('alpha'))
+
+  // average alpha power
+  var avgAlpha = alpha.map(Averager)
+   
+  // beta bandpass
+  var beta = stream
+    .map(Bandpass('beta'))
+
+  // average delta power
+  var avgBeta = beta.map(Averager)
+  
+  // ratio between alpha and delta
+  var alphaBetaRatio = avgAlpha.combine(avgBeta, Ratio) 
+  
+  // spike detection
+  var spikes = alphaBetaRatio
+    .combine(
+      alphaBetaRatio.slidingWindow(1000).map(require('lodash').flatten)
+    , StandardDevThreshold(2))
+
+  // here we draw stuff
+  
+  //draw(stream, Spectrogram, 'full spectrogram')
+  
+  draw(alpha, Spectrogram, 'alpha')
+
+  draw(beta, Spectrogram, 'beta')
+
+  //draw(avgAlpha, Spectrogram, 'average alpha')
+  
+  //draw(avgBeta, Spectrogram, 'average beta')
+  
+  draw(alphaBetaRatio, NumberView,  'ratio of alpha:beta power')
+
+  draw(spikes, NumberView,  'spikes in alpha:beta ratio (+2 stdevs above mean for past 1000 spectra)')
+
+}
+
+},{"./combinators/Ratio.js":1,"./combinators/StandardDevThreshold.js":2,"./patches/Averager.js":4,"./patches/Bandpass.js":5,"./views/Number.js":6,"./views/Spectrogram.js":7,"lodash":32}],4:[function(require,module,exports){
+module.exports = function (arr) {
+  return [ require('average')(arr) ]
+}
+
+},{"average":10}],5:[function(require,module,exports){
+var _ = require('lodash')
+
+var bands = [
+  {
+    name: 'delta'
+  , min: 0
+  , max: 4
+  }
+  , {
+    name: 'theta'
+  , min: 4
+  , max: 7
+  }
+  , {
+    name: 'alpha'
+  , min: 8
+  , max: 15
+  }
+  , {
+    name: 'beta'
+  , min: 16
+  , max: 31 
+  }
+  , {
+    name: 'gamma'
+  , min: 32 
+  , max: 256
+  }
+]
+
+module.exports = function (bandName) {
+  var band = _.first(_.filter(bands, 'name', bandName))
+  return function (list) {
+    return _.slice(list, band.min, band.max)
+  }
+}
+},{"lodash":32}],6:[function(require,module,exports){
+var h = require('hyperscript')
+
+function spectrogram (list) {
+
+  var d = h('h1',{ style: {
+    'overflow': 'hidden'
+   }
+  }, list[0])
+    
+  return d.outerHTML
+
+}
+
+
+module.exports = spectrogram
+
+},{"hyperscript":22}],7:[function(require,module,exports){
+var h = require('hyperscript')
+  , _ = require('lodash')
+  , LinScale = require('simple-linear-scale')
+
+function spectrogram (list) {
+
+  var divHeight = 100
+
+  var maxValue = _.max(list)
+
+  var normalize = LinScale([0, maxValue], [0, divHeight])
+
+  function drawMagnitude (mag) {
+    return h('div.point', { style: {
+        'height': normalize(mag) + 'px'
+      , 'width': '1px' 
+      , 'float': 'left'
+      , 'padding':'1px' 
+      , 'background-color': '#3ee'
+      }
+     })
+    }
+ 
+  var d = h('div',{ style: {
+    'overflow': 'hidden'
+   }
+  }, _.map(list, drawMagnitude))
+    
+  return d.outerHTML
+
+}
+
+
+module.exports = spectrogram
+
+},{"hyperscript":22,"lodash":32,"simple-linear-scale":52}],8:[function(require,module,exports){
+var shoe = require('shoe')
+  , Kefir = require('kefir')
+  , channelName =  '/spectra'
+
+// this wraps the main client app (app/index.js)
+// this app has 2 main responsibilities:
+//
+//   * setting up the stream from EEG device
+//   * making a function that lets the app draw on the DOM
+//
+// so, the client app (app/index.js) exposes a function:
+//
+//   module.exports = function (stream, draw) {
+//     // ...
+//   }
+//
+// `stream` is a Kefir stream,
+// `draw` is a function (more on this later)
+//
+// first, `stream`:
+// `stream` is a synchronous, discrete channel of data
+// that comes from our websocket (shoe) stream
+//
+// the shoe stream is a node stream
+// the underlying structure of the stream is a JSON list
+// 
+//   [ {...} ...]
+//
+
+var stream = Kefir.stream(function (emitter) {
+
+  var parser  = require('JSONStream').parse('*')
+
+  var mapSync = require('event-stream').mapSync
+  
+  shoe(channelName).pipe(parser).pipe(mapSync(emitter.emit))
+
+  return
+
+})
+
+// (here, for us, "synchronous" means that 
+// the data that comes over `stream` will be well-ordered).
+//
+// so that's `stream.`
+
+// now, `draw` is a higher-order function that takes 
+//
+//   * a Kefir `stream`,
+//   * `fn`, which takes a list and returns HTML
+//   * `description`, a string that will show up in the UI
+//
+// we can use `draw` to add a view for a stream we're processing
+// and see the data come through in real-time
+//
+// ex. usage in your app:
+//  
+//     draw(alphaBetaRatio, Spectrogram, 'power spectrum')
+//
+
+function draw (stream, fn, description) {
+
+  function div () {
+    return document.createElement('div')
+  }
+
+  // we make a div that looks like
+  //
+  //     <div>
+  //       my description
+  //       <div></div>
+  //     </div>
+  //
+  // the nested (empty) div is where
+  // our graphs will go.
+
+  var parent = div()
+  var desc   = document.createTextNode(description)
+  var target = div()
+  parent.appendChild(desc)
+  parent.appendChild(target)
+
+  // we add this div to the dom
+  /
+  document.body.appendChild(parent)
+  
+  // set-up side effect:
+  // a value that comes over Stream
+  // will be passed to `fn`, 
+  // and the html that comes out of `fn` wil
+  // be put in our div
+
+  stream.onValue(function (list) {
+    target.innerHTML = fn(list)
+  })
+   
+
+  return
+}
+
+// we require the app
+// and launch it
+//
+// TODO docReady(setup)
+
+var app = require('./app/index.js')
+app(stream, draw)
+
+},{"./app/index.js":3,"JSONStream":9,"event-stream":19,"kefir":31,"shoe":50}],9:[function(require,module,exports){
 (function (process,Buffer){
 
 
@@ -310,7 +532,7 @@ if(!module.parent && process.title !== 'browser') {
 }
 
 }).call(this,require('_process'),require("buffer").Buffer)
-},{"_process":8,"buffer":9,"jsonparse":21,"through":47}],5:[function(require,module,exports){
+},{"_process":13,"buffer":14,"jsonparse":30,"through":57}],10:[function(require,module,exports){
 module.exports = function average(values) {
     'use strict';
     
@@ -320,7 +542,7 @@ module.exports = function average(values) {
 function sum(a, b) {
     return a + b;
 }
-},{}],6:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 var lookup = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
 ;(function (exports) {
@@ -446,9 +668,9 @@ var lookup = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 	exports.fromByteArray = uint8ToBase64
 }(typeof exports === 'undefined' ? (this.base64js = {}) : exports))
 
-},{}],7:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 
-},{}],8:[function(require,module,exports){
+},{}],13:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
@@ -541,7 +763,7 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],9:[function(require,module,exports){
+},{}],14:[function(require,module,exports){
 (function (global){
 /*!
  * The buffer module from node.js, for the browser.
@@ -2089,7 +2311,108 @@ function blitBuffer (src, dst, offset, length) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"base64-js":6,"ieee754":16,"is-array":18}],10:[function(require,module,exports){
+},{"base64-js":11,"ieee754":24,"is-array":27}],15:[function(require,module,exports){
+// contains, add, remove, toggle
+var indexof = require('indexof')
+
+module.exports = ClassList
+
+function ClassList(elem) {
+    var cl = elem.classList
+
+    if (cl) {
+        return cl
+    }
+
+    var classList = {
+        add: add
+        , remove: remove
+        , contains: contains
+        , toggle: toggle
+        , toString: $toString
+        , length: 0
+        , item: item
+    }
+
+    return classList
+
+    function add(token) {
+        var list = getTokens()
+        if (indexof(list, token) > -1) {
+            return
+        }
+        list.push(token)
+        setTokens(list)
+    }
+
+    function remove(token) {
+        var list = getTokens()
+            , index = indexof(list, token)
+
+        if (index === -1) {
+            return
+        }
+
+        list.splice(index, 1)
+        setTokens(list)
+    }
+
+    function contains(token) {
+        return indexof(getTokens(), token) > -1
+    }
+
+    function toggle(token) {
+        if (contains(token)) {
+            remove(token)
+            return false
+        } else {
+            add(token)
+            return true
+        }
+    }
+
+    function $toString() {
+        return elem.className
+    }
+
+    function item(index) {
+        var tokens = getTokens()
+        return tokens[index] || null
+    }
+
+    function getTokens() {
+        var className = elem.className
+
+        return filter(className.split(" "), isTruthy)
+    }
+
+    function setTokens(list) {
+        var length = list.length
+
+        elem.className = list.join(" ")
+        classList.length = length
+
+        for (var i = 0; i < list.length; i++) {
+            classList[i] = list[i]
+        }
+
+        delete list[length]
+    }
+}
+
+function filter (arr, fn) {
+    var ret = []
+    for (var i = 0; i < arr.length; i++) {
+        if (fn(arr[i])) ret.push(arr[i])
+    }
+    return ret
+}
+
+function isTruthy(value) {
+    return !!value
+}
+
+},{"indexof":25}],16:[function(require,module,exports){
 /**
 *
 *	COMPUTE: stdev
@@ -2156,7 +2479,7 @@ function blitBuffer (src, dst, offset, length) {
 	module.exports = stdev;
 
 })();
-},{}],11:[function(require,module,exports){
+},{}],17:[function(require,module,exports){
 (function (Buffer){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -2266,7 +2589,7 @@ function objectToString(o) {
   return Object.prototype.toString.call(o);
 }
 }).call(this,{"isBuffer":require("../../is-buffer/index.js")})
-},{"../../is-buffer/index.js":19}],12:[function(require,module,exports){
+},{"../../is-buffer/index.js":28}],18:[function(require,module,exports){
 var Stream = require("stream")
 var writeMethods = ["write", "end", "destroy"]
 var readMethods = ["resume", "pause"]
@@ -2355,7 +2678,7 @@ function duplex(writer, reader) {
     }
 }
 
-},{"stream":44}],13:[function(require,module,exports){
+},{"stream":54}],19:[function(require,module,exports){
 (function (process,global,Buffer){
 //filter will reemit the data if cb(err,pass) pass is truthy
 
@@ -2671,7 +2994,7 @@ es.pipeable = function () {
 }
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {},require("buffer").Buffer)
-},{"_process":8,"buffer":9,"duplexer":12,"from":15,"map-stream":24,"pause-stream":25,"split":43,"stream":44,"stream-combiner":45,"through":47}],14:[function(require,module,exports){
+},{"_process":13,"buffer":14,"duplexer":18,"from":21,"map-stream":33,"pause-stream":34,"split":53,"stream":54,"stream-combiner":55,"through":57}],20:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -2974,7 +3297,7 @@ function isUndefined(arg) {
   return arg === void 0;
 }
 
-},{}],15:[function(require,module,exports){
+},{}],21:[function(require,module,exports){
 (function (process){
 
 'use strict';
@@ -3046,7 +3369,266 @@ function from (source) {
 }
 
 }).call(this,require('_process'))
-},{"_process":8,"stream":44}],16:[function(require,module,exports){
+},{"_process":13,"stream":54}],22:[function(require,module,exports){
+var split = require('browser-split')
+var ClassList = require('class-list')
+require('html-element')
+
+function context () {
+
+  var cleanupFuncs = []
+
+  function h() {
+    var args = [].slice.call(arguments), e = null
+    function item (l) {
+      var r
+      function parseClass (string) {
+        // Our minimal parser doesn’t understand escaping CSS special
+        // characters like `#`. Don’t use them. More reading:
+        // https://mathiasbynens.be/notes/css-escapes .
+
+        var m = split(string, /([\.#]?[^\s#.]+)/)
+        if(/^\.|#/.test(m[1]))
+          e = document.createElement('div')
+        forEach(m, function (v) {
+          var s = v.substring(1,v.length)
+          if(!v) return
+          if(!e)
+            e = document.createElement(v)
+          else if (v[0] === '.')
+            ClassList(e).add(s)
+          else if (v[0] === '#')
+            e.setAttribute('id', s)
+        })
+      }
+
+      if(l == null)
+        ;
+      else if('string' === typeof l) {
+        if(!e)
+          parseClass(l)
+        else
+          e.appendChild(r = document.createTextNode(l))
+      }
+      else if('number' === typeof l
+        || 'boolean' === typeof l
+        || l instanceof Date
+        || l instanceof RegExp ) {
+          e.appendChild(r = document.createTextNode(l.toString()))
+      }
+      //there might be a better way to handle this...
+      else if (isArray(l))
+        forEach(l, item)
+      else if(isNode(l))
+        e.appendChild(r = l)
+      else if(l instanceof Text)
+        e.appendChild(r = l)
+      else if ('object' === typeof l) {
+        for (var k in l) {
+          if('function' === typeof l[k]) {
+            if(/^on\w+/.test(k)) {
+              (function (k, l) { // capture k, l in the closure
+                if (e.addEventListener){
+                  e.addEventListener(k.substring(2), l[k], false)
+                  cleanupFuncs.push(function(){
+                    e.removeEventListener(k.substring(2), l[k], false)
+                  })
+                }else{
+                  e.attachEvent(k, l[k])
+                  cleanupFuncs.push(function(){
+                    e.detachEvent(k, l[k])
+                  })
+                }
+              })(k, l)
+            } else {
+              // observable
+              e[k] = l[k]()
+              cleanupFuncs.push(l[k](function (v) {
+                e[k] = v
+              }))
+            }
+          }
+          else if(k === 'style') {
+            if('string' === typeof l[k]) {
+              e.style.cssText = l[k]
+            }else{
+              for (var s in l[k]) (function(s, v) {
+                if('function' === typeof v) {
+                  // observable
+                  e.style.setProperty(s, v())
+                  cleanupFuncs.push(v(function (val) {
+                    e.style.setProperty(s, val)
+                  }))
+                } else
+                  e.style.setProperty(s, l[k][s])
+              })(s, l[k][s])
+            }
+          } else if (k.substr(0, 5) === "data-") {
+            e.setAttribute(k, l[k])
+          } else {
+            e[k] = l[k]
+          }
+        }
+      } else if ('function' === typeof l) {
+        //assume it's an observable!
+        var v = l()
+        e.appendChild(r = isNode(v) ? v : document.createTextNode(v))
+
+        cleanupFuncs.push(l(function (v) {
+          if(isNode(v) && r.parentElement)
+            r.parentElement.replaceChild(v, r), r = v
+          else
+            r.textContent = v
+        }))
+      }
+
+      return r
+    }
+    while(args.length)
+      item(args.shift())
+
+    return e
+  }
+
+  h.cleanup = function () {
+    for (var i = 0; i < cleanupFuncs.length; i++){
+      cleanupFuncs[i]()
+    }
+    cleanupFuncs.length = 0
+  }
+
+  return h
+}
+
+var h = module.exports = context()
+h.context = context
+
+function isNode (el) {
+  return el && el.nodeName && el.nodeType
+}
+
+function isText (el) {
+  return el && el.nodeName === '#text' && el.nodeType == 3
+}
+
+function forEach (arr, fn) {
+  if (arr.forEach) return arr.forEach(fn)
+  for (var i = 0; i < arr.length; i++) fn(arr[i], i)
+}
+
+function isArray (arr) {
+  return Object.prototype.toString.call(arr) == '[object Array]'
+}
+
+},{"browser-split":23,"class-list":15,"html-element":12}],23:[function(require,module,exports){
+/*!
+ * Cross-Browser Split 1.1.1
+ * Copyright 2007-2012 Steven Levithan <stevenlevithan.com>
+ * Available under the MIT License
+ * ECMAScript compliant, uniform cross-browser split method
+ */
+
+/**
+ * Splits a string into an array of strings using a regex or string separator. Matches of the
+ * separator are not included in the result array. However, if `separator` is a regex that contains
+ * capturing groups, backreferences are spliced into the result each time `separator` is matched.
+ * Fixes browser bugs compared to the native `String.prototype.split` and can be used reliably
+ * cross-browser.
+ * @param {String} str String to split.
+ * @param {RegExp|String} separator Regex or string to use for separating the string.
+ * @param {Number} [limit] Maximum number of items to include in the result array.
+ * @returns {Array} Array of substrings.
+ * @example
+ *
+ * // Basic use
+ * split('a b c d', ' ');
+ * // -> ['a', 'b', 'c', 'd']
+ *
+ * // With limit
+ * split('a b c d', ' ', 2);
+ * // -> ['a', 'b']
+ *
+ * // Backreferences in result array
+ * split('..word1 word2..', /([a-z]+)(\d+)/i);
+ * // -> ['..', 'word', '1', ' ', 'word', '2', '..']
+ */
+module.exports = (function split(undef) {
+
+  var nativeSplit = String.prototype.split,
+    compliantExecNpcg = /()??/.exec("")[1] === undef,
+    // NPCG: nonparticipating capturing group
+    self;
+
+  self = function(str, separator, limit) {
+    // If `separator` is not a regex, use `nativeSplit`
+    if (Object.prototype.toString.call(separator) !== "[object RegExp]") {
+      return nativeSplit.call(str, separator, limit);
+    }
+    var output = [],
+      flags = (separator.ignoreCase ? "i" : "") + (separator.multiline ? "m" : "") + (separator.extended ? "x" : "") + // Proposed for ES6
+      (separator.sticky ? "y" : ""),
+      // Firefox 3+
+      lastLastIndex = 0,
+      // Make `global` and avoid `lastIndex` issues by working with a copy
+      separator = new RegExp(separator.source, flags + "g"),
+      separator2, match, lastIndex, lastLength;
+    str += ""; // Type-convert
+    if (!compliantExecNpcg) {
+      // Doesn't need flags gy, but they don't hurt
+      separator2 = new RegExp("^" + separator.source + "$(?!\\s)", flags);
+    }
+    /* Values for `limit`, per the spec:
+     * If undefined: 4294967295 // Math.pow(2, 32) - 1
+     * If 0, Infinity, or NaN: 0
+     * If positive number: limit = Math.floor(limit); if (limit > 4294967295) limit -= 4294967296;
+     * If negative number: 4294967296 - Math.floor(Math.abs(limit))
+     * If other: Type-convert, then use the above rules
+     */
+    limit = limit === undef ? -1 >>> 0 : // Math.pow(2, 32) - 1
+    limit >>> 0; // ToUint32(limit)
+    while (match = separator.exec(str)) {
+      // `separator.lastIndex` is not reliable cross-browser
+      lastIndex = match.index + match[0].length;
+      if (lastIndex > lastLastIndex) {
+        output.push(str.slice(lastLastIndex, match.index));
+        // Fix browsers whose `exec` methods don't consistently return `undefined` for
+        // nonparticipating capturing groups
+        if (!compliantExecNpcg && match.length > 1) {
+          match[0].replace(separator2, function() {
+            for (var i = 1; i < arguments.length - 2; i++) {
+              if (arguments[i] === undef) {
+                match[i] = undef;
+              }
+            }
+          });
+        }
+        if (match.length > 1 && match.index < str.length) {
+          Array.prototype.push.apply(output, match.slice(1));
+        }
+        lastLength = match[0].length;
+        lastLastIndex = lastIndex;
+        if (output.length >= limit) {
+          break;
+        }
+      }
+      if (separator.lastIndex === match.index) {
+        separator.lastIndex++; // Avoid an infinite loop
+      }
+    }
+    if (lastLastIndex === str.length) {
+      if (lastLength || !separator.test("")) {
+        output.push("");
+      }
+    } else {
+      output.push(str.slice(lastLastIndex));
+    }
+    return output.length > limit ? output.slice(0, limit) : output;
+  };
+
+  return self;
+})();
+
+},{}],24:[function(require,module,exports){
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
   var e, m
   var eLen = nBytes * 8 - mLen - 1
@@ -3132,7 +3714,18 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
   buffer[offset + i - d] |= s * 128
 }
 
-},{}],17:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
+
+var indexOf = [].indexOf;
+
+module.exports = function(arr, obj){
+  if (indexOf) return arr.indexOf(obj);
+  for (var i = 0; i < arr.length; ++i) {
+    if (arr[i] === obj) return i;
+  }
+  return -1;
+};
+},{}],26:[function(require,module,exports){
 if (typeof Object.create === 'function') {
   // implementation from standard node.js 'util' module
   module.exports = function inherits(ctor, superCtor) {
@@ -3157,7 +3750,7 @@ if (typeof Object.create === 'function') {
   }
 }
 
-},{}],18:[function(require,module,exports){
+},{}],27:[function(require,module,exports){
 
 /**
  * isArray
@@ -3192,7 +3785,7 @@ module.exports = isArray || function (val) {
   return !! val && '[object Array]' == str.call(val);
 };
 
-},{}],19:[function(require,module,exports){
+},{}],28:[function(require,module,exports){
 /**
  * Determine if an object is Buffer
  *
@@ -3211,12 +3804,12 @@ module.exports = function (obj) {
     ))
 }
 
-},{}],20:[function(require,module,exports){
+},{}],29:[function(require,module,exports){
 module.exports = Array.isArray || function (arr) {
   return Object.prototype.toString.call(arr) == '[object Array]';
 };
 
-},{}],21:[function(require,module,exports){
+},{}],30:[function(require,module,exports){
 (function (Buffer){
 /*global Buffer*/
 // Named constants with unique integer values
@@ -3561,7 +4154,7 @@ Parser.C = C;
 module.exports = Parser;
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":9}],22:[function(require,module,exports){
+},{"buffer":14}],31:[function(require,module,exports){
 /*! Kefir.js v3.1.0
  *  https://github.com/rpominov/kefir
  */
@@ -8208,7 +8801,7 @@ return /******/ (function(modules) { // webpackBootstrap
 /******/ ])
 });
 ;
-},{}],23:[function(require,module,exports){
+},{}],32:[function(require,module,exports){
 (function (global){
 /**
  * @license
@@ -20563,7 +21156,7 @@ return /******/ (function(modules) { // webpackBootstrap
 }.call(this));
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],24:[function(require,module,exports){
+},{}],33:[function(require,module,exports){
 (function (process){
 //filter will reemit the data if cb(err,pass) pass is truthy
 
@@ -20712,12 +21305,12 @@ module.exports = function (mapper, opts) {
 
 
 }).call(this,require('_process'))
-},{"_process":8,"stream":44}],25:[function(require,module,exports){
+},{"_process":13,"stream":54}],34:[function(require,module,exports){
 //through@2 handles this by default!
 module.exports = require('through')
 
 
-},{"through":47}],26:[function(require,module,exports){
+},{"through":57}],35:[function(require,module,exports){
 (function (process){
 'use strict';
 module.exports = nextTick;
@@ -20734,7 +21327,7 @@ function nextTick(fn) {
 }
 
 }).call(this,require('_process'))
-},{"_process":8}],27:[function(require,module,exports){
+},{"_process":13}],36:[function(require,module,exports){
 (function (global){
 /*! https://mths.be/punycode v1.3.2 by @mathias */
 ;(function(root) {
@@ -21268,7 +21861,7 @@ function nextTick(fn) {
 }(this));
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],28:[function(require,module,exports){
+},{}],37:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -21354,7 +21947,7 @@ var isArray = Array.isArray || function (xs) {
   return Object.prototype.toString.call(xs) === '[object Array]';
 };
 
-},{}],29:[function(require,module,exports){
+},{}],38:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -21441,16 +22034,16 @@ var objectKeys = Object.keys || function (obj) {
   return res;
 };
 
-},{}],30:[function(require,module,exports){
+},{}],39:[function(require,module,exports){
 'use strict';
 
 exports.decode = exports.parse = require('./decode');
 exports.encode = exports.stringify = require('./encode');
 
-},{"./decode":28,"./encode":29}],31:[function(require,module,exports){
+},{"./decode":37,"./encode":38}],40:[function(require,module,exports){
 module.exports = require("./lib/_stream_duplex.js")
 
-},{"./lib/_stream_duplex.js":32}],32:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":41}],41:[function(require,module,exports){
 // a duplex stream is just a stream that is both readable and writable.
 // Since JS doesn't have multiple prototypal inheritance, this class
 // prototypally inherits from Readable, and then parasitically from
@@ -21534,7 +22127,7 @@ function forEach (xs, f) {
   }
 }
 
-},{"./_stream_readable":34,"./_stream_writable":36,"core-util-is":11,"inherits":17,"process-nextick-args":26}],33:[function(require,module,exports){
+},{"./_stream_readable":43,"./_stream_writable":45,"core-util-is":17,"inherits":26,"process-nextick-args":35}],42:[function(require,module,exports){
 // a passthrough stream.
 // basically just the most minimal sort of Transform stream.
 // Every written chunk gets output as-is.
@@ -21563,7 +22156,7 @@ PassThrough.prototype._transform = function(chunk, encoding, cb) {
   cb(null, chunk);
 };
 
-},{"./_stream_transform":35,"core-util-is":11,"inherits":17}],34:[function(require,module,exports){
+},{"./_stream_transform":44,"core-util-is":17,"inherits":26}],43:[function(require,module,exports){
 (function (process){
 'use strict';
 
@@ -22526,7 +23119,7 @@ function indexOf (xs, x) {
 }
 
 }).call(this,require('_process'))
-},{"./_stream_duplex":32,"_process":8,"buffer":9,"core-util-is":11,"events":14,"inherits":17,"isarray":20,"process-nextick-args":26,"string_decoder/":46,"util":7}],35:[function(require,module,exports){
+},{"./_stream_duplex":41,"_process":13,"buffer":14,"core-util-is":17,"events":20,"inherits":26,"isarray":29,"process-nextick-args":35,"string_decoder/":56,"util":12}],44:[function(require,module,exports){
 // a transform stream is a readable/writable stream where you do
 // something with the data.  Sometimes it's called a "filter",
 // but that's not a great name for it, since that implies a thing where
@@ -22725,7 +23318,7 @@ function done(stream, er) {
   return stream.push(null);
 }
 
-},{"./_stream_duplex":32,"core-util-is":11,"inherits":17}],36:[function(require,module,exports){
+},{"./_stream_duplex":41,"core-util-is":17,"inherits":26}],45:[function(require,module,exports){
 // A bit simpler than readable streams.
 // Implement an async ._write(chunk, cb), and it'll handle all
 // the drain event emission and buffering.
@@ -23247,10 +23840,10 @@ function endWritable(stream, state, cb) {
   state.ended = true;
 }
 
-},{"./_stream_duplex":32,"buffer":9,"core-util-is":11,"events":14,"inherits":17,"process-nextick-args":26,"util-deprecate":49}],37:[function(require,module,exports){
+},{"./_stream_duplex":41,"buffer":14,"core-util-is":17,"events":20,"inherits":26,"process-nextick-args":35,"util-deprecate":59}],46:[function(require,module,exports){
 module.exports = require("./lib/_stream_passthrough.js")
 
-},{"./lib/_stream_passthrough.js":33}],38:[function(require,module,exports){
+},{"./lib/_stream_passthrough.js":42}],47:[function(require,module,exports){
 var Stream = (function (){
   try {
     return require('st' + 'ream'); // hack to fix a circular dependency issue when used with browserify
@@ -23264,13 +23857,13 @@ exports.Duplex = require('./lib/_stream_duplex.js');
 exports.Transform = require('./lib/_stream_transform.js');
 exports.PassThrough = require('./lib/_stream_passthrough.js');
 
-},{"./lib/_stream_duplex.js":32,"./lib/_stream_passthrough.js":33,"./lib/_stream_readable.js":34,"./lib/_stream_transform.js":35,"./lib/_stream_writable.js":36}],39:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":41,"./lib/_stream_passthrough.js":42,"./lib/_stream_readable.js":43,"./lib/_stream_transform.js":44,"./lib/_stream_writable.js":45}],48:[function(require,module,exports){
 module.exports = require("./lib/_stream_transform.js")
 
-},{"./lib/_stream_transform.js":35}],40:[function(require,module,exports){
+},{"./lib/_stream_transform.js":44}],49:[function(require,module,exports){
 module.exports = require("./lib/_stream_writable.js")
 
-},{"./lib/_stream_writable.js":36}],41:[function(require,module,exports){
+},{"./lib/_stream_writable.js":45}],50:[function(require,module,exports){
 var Stream = require('stream');
 var sockjs = require('sockjs-client');
 var resolve = require('url').resolve;
@@ -23335,7 +23928,7 @@ module.exports = function (u, cb) {
     return stream;
 };
 
-},{"sockjs-client":42,"stream":44,"url":48}],42:[function(require,module,exports){
+},{"sockjs-client":51,"stream":54,"url":58}],51:[function(require,module,exports){
 /* SockJS client, version 0.3.1.7.ga67f.dirty, http://sockjs.org, MIT License
 
 Copyright (c) 2011-2012 VMware, Inc.
@@ -25660,7 +26253,36 @@ if (typeof module === 'object' && module && module.exports) {
 // [*] End of lib/all.js
 
 
-},{}],43:[function(require,module,exports){
+},{}],52:[function(require,module,exports){
+/**
+ * Bare-bones equivalent for the functionality of d3.scale.linear
+ * @param {Array<number>} domain
+ * @param {Array<number>} range
+ * @returns {Function} scale function
+ * @example
+ * var linearScale = require('simple-linear-scale');
+ *
+ * var scaleFunction = linearScale([0, 1], [0, 100]);
+ * scaleFunction(0.5); // 50
+ *
+ * // clamp option ensures that output is within range
+ * var scaleFunction = linearScale([0, 1], [0, 10], true);
+ * scaleFunction(100); // 10
+ */
+function linearScale(domain, range, clamp) {
+  return function(value) {
+    if (domain[0] === domain[1] || range[0] === range[1]) {
+      return range[0];
+    }
+    var ratio = (range[1] - range[0]) / (domain[1] - domain[0]),
+      result = range[0] + ratio * (value - domain[0]);
+    return clamp ? Math.min(range[1], Math.max(range[0], result)) : result;
+  };
+}
+
+module.exports = linearScale;
+
+},{}],53:[function(require,module,exports){
 //filter will reemit the data if cb(err,pass) pass is truthy
 
 // reduce is more tricky
@@ -25725,7 +26347,7 @@ function split (matcher, mapper, options) {
 }
 
 
-},{"string_decoder":46,"through":47}],44:[function(require,module,exports){
+},{"string_decoder":56,"through":57}],54:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -25854,7 +26476,7 @@ Stream.prototype.pipe = function(dest, options) {
   return dest;
 };
 
-},{"events":14,"inherits":17,"readable-stream/duplex.js":31,"readable-stream/passthrough.js":37,"readable-stream/readable.js":38,"readable-stream/transform.js":39,"readable-stream/writable.js":40}],45:[function(require,module,exports){
+},{"events":20,"inherits":26,"readable-stream/duplex.js":40,"readable-stream/passthrough.js":46,"readable-stream/readable.js":47,"readable-stream/transform.js":48,"readable-stream/writable.js":49}],55:[function(require,module,exports){
 var duplexer = require('duplexer')
 
 module.exports = function () {
@@ -25895,7 +26517,7 @@ module.exports = function () {
 }
 
 
-},{"duplexer":12}],46:[function(require,module,exports){
+},{"duplexer":18}],56:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -26118,7 +26740,7 @@ function base64DetectIncompleteChar(buffer) {
   this.charLength = this.charReceived ? 3 : 0;
 }
 
-},{"buffer":9}],47:[function(require,module,exports){
+},{"buffer":14}],57:[function(require,module,exports){
 (function (process){
 var Stream = require('stream')
 
@@ -26230,7 +26852,7 @@ function through (write, end, opts) {
 
 
 }).call(this,require('_process'))
-},{"_process":8,"stream":44}],48:[function(require,module,exports){
+},{"_process":13,"stream":54}],58:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -26939,7 +27561,7 @@ function isNullOrUndefined(arg) {
   return  arg == null;
 }
 
-},{"punycode":27,"querystring":30}],49:[function(require,module,exports){
+},{"punycode":36,"querystring":39}],59:[function(require,module,exports){
 (function (global){
 
 /**
@@ -27010,46 +27632,4 @@ function config (name) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],50:[function(require,module,exports){
-module.exports = function (arr) {
-  return [ require('average')(arr) ]
-}
-
-},{"average":5}],51:[function(require,module,exports){
-var _ = require('lodash')
-
-var bands = [
-  {
-    name: 'delta'
-  , min: 0
-  , max: 4
-  }
-  , {
-    name: 'theta'
-  , min: 4
-  , max: 7
-  }
-  , {
-    name: 'alpha'
-  , min: 8
-  , max: 15
-  }
-  , {
-    name: 'beta'
-  , min: 16
-  , max: 31 
-  }
-  , {
-    name: 'gamma'
-  , min: 32 
-  , max: 256
-  }
-]
-
-module.exports = function (bandName) {
-  var band = _.first(_.filter(bands, 'name', bandName))
-  return function (list) {
-    return _.slice(list, band.min, band.max)
-  }
-}
-},{"lodash":23}]},{},[1]);
+},{}]},{},[8]);
