@@ -52,15 +52,15 @@ module.exports = function (stream, draw) {
 
   // here we draw stuff
   
-  //draw(stream, Spectrogram, 'full spectrogram')
+  draw(stream, Spectrogram, 'full spectrogram')
   
   draw(alpha, Spectrogram, 'alpha')
 
   draw(beta, Spectrogram, 'beta')
 
-  //draw(avgAlpha, Spectrogram, 'average alpha')
+  //draw(avgAlpha, NumberView, 'average alpha')
   
-  //draw(avgBeta, Spectrogram, 'average beta')
+  //draw(avgBeta, NumberView, 'average beta')
   
   draw(alphaBetaRatio, NumberView,  'ratio of alpha:beta power')
 

@@ -1,4 +1,4 @@
-var h = require('hyperscript')
+var h = require('virtual-dom/h')
   , _ = require('lodash')
   , LinScale = require('simple-linear-scale')
 
@@ -33,7 +33,7 @@ function spectrogram (list) {
     , v)
   }
  
-  var d = h('div', { 
+  return h('div', { 
     style: {
        'overflow': 'hidden'
      , 'padding-bottom': '30px'
@@ -43,8 +43,6 @@ function spectrogram (list) {
     , maxValueAxis(maxValue)
   ])
     
-  return d.outerHTML
-
 }
 
 

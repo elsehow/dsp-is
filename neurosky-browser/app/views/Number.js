@@ -1,15 +1,13 @@
-var h = require('hyperscript')
+var h = require('virtual-dom/h')
 
 function spectrogram (list) {
 
-  var d = h('h1',{ style: {
+  return h('h1',{ style: {
     'overflow': 'hidden'
     , 'padding-bottom': '10px'
    }
   }, list[0])
     
-  return d.outerHTML
-
 }
 
 

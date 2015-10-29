@@ -1,5 +1,6 @@
 var shoe = require('shoe')
   , Kefir = require('kefir')
+  , main = require('main-loop')
   , channelName =  '/spectra'
 
 // this wraps the main client app (app/index.js)
@@ -60,40 +61,33 @@ var stream = Kefir.stream(function (emitter) {
 
 function draw (stream, fn, description) {
 
-  function div () {
-    return document.createElement('div')
-  }
-
   // we make a div that looks like
   //
   //     <div>
   //       my description
-  //       <div></div>
   //     </div>
-  //
-  // the nested (empty) div is where
-  // our graphs will go.
 
-  var parent = div()
+  var parent = document.createElement('div')
   var desc   = document.createTextNode(description)
-  var target = div()
   parent.appendChild(desc)
-  parent.appendChild(target)
 
-  // we add this div to the dom
-  /
-  document.body.appendChild(parent)
+  // and add this div to the dom
   
-  // set-up side effect:
-  // a value that comes over Stream
-  // will be passed to `fn`, 
-  // and the html that comes out of `fn` wil
-  // be put in our div
+  document.body.appendChild(parent)
 
-  stream.onValue(function (list) {
-    target.innerHTML = fn(list)
-  })
-   
+  // now we set up main-loop
+  // to do virtual-dom diffing on an element inside this div.
+  
+  var loop = main([], fn, require('virtual-dom'))
+  parent.appendChild(loop.target)
+  
+  // finally, we set-up side effect:
+  // every value that comes over `stream`
+  //
+  // will be passed to `fn`, 
+  // the result will be used to update `looop`
+
+  stream.onValue(loop.update)
 
   return
 }
