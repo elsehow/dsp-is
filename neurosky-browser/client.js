@@ -33,6 +33,9 @@ var stream = Kefir.stream(function (emitter) {
   var parser  = require('JSONStream').parse('*')
 
   var mapSync = require('event-stream').mapSync
+
+  // (here, for us, "sync" (synchronous) means that 
+  // the data that comes over `stream` will be well-ordered).
   
   shoe(channelName).pipe(parser).pipe(mapSync(emitter.emit))
 
@@ -40,15 +43,10 @@ var stream = Kefir.stream(function (emitter) {
 
 })
 
-// (here, for us, "synchronous" means that 
-// the data that comes over `stream` will be well-ordered).
-//
-// so that's `stream.`
-
 // now, `draw` is a higher-order function that takes 
 //
 //   * a Kefir `stream`,
-//   * `fn`, which takes a list and returns HTML
+//   * `fn`, which takes a list and returns virtual-dom/h
 //   * `description`, a string that will show up in the UI
 //
 // we can use `draw` to add a view for a stream we're processing
@@ -76,16 +74,18 @@ function draw (stream, fn, description) {
   document.body.appendChild(parent)
 
   // now we set up main-loop
-  // to do virtual-dom diffing on an element inside this div.
+  // to do virtual-dom diffing 
+  //
+  // we set it up on an element within this div
   
   var loop = main([], fn, require('virtual-dom'))
   parent.appendChild(loop.target)
   
-  // finally, we set-up side effect:
+  // finally, we set-up a side effect.
   // every value that comes over `stream`
-  //
-  // will be passed to `fn`, 
-  // the result will be used to update `looop`
+  // will be passed to `loop.update`, which
+  // calls `fn` (see how we passed `fn` 
+  // to `main()` above)
 
   stream.onValue(loop.update)
 
